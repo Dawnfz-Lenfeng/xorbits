@@ -87,7 +87,7 @@ class ManhattanDistances(PairwiseDistances):
             [ctx[inp.key] for inp in op.inputs], device=op.device, ret_extra=True
         )
         out = op.outputs[0]
-
+        
         with device(device_id):
             if sklearn_manhattan_distances is not None:
                 ctx[out.key] = sklearn_manhattan_distances(
@@ -102,10 +102,9 @@ class ManhattanDistances(PairwiseDistances):
 
 
 def manhattan_distances(X, Y=None):
-    """Compute the L1 distances between the vectors in X and Y.
+    """ Compute the L1 distances between the vectors in X and Y.
 
     Read more in the :ref:`User Guide <metrics>`.
-
     Parameters
     ----------
     X : array_like
