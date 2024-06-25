@@ -5,13 +5,12 @@ import asyncio
 import numpy as np
 import pytest
 
-from xorbits._mars.services.cluster.tests.test_service import actor_pools
 from xoscar.api import (
     Actor,
-    actor_ref,
-    buffer_ref,
     ActorRef,
+    actor_ref,
     BufferRef,
+    buffer_ref,
     copy_to,
     create_actor_pool,
     create_actor,
@@ -39,7 +38,7 @@ class BufferTransferActor(Actor):
         else:
             return [BufferRef.get_buffer(ref) for ref in buf_refs]
 
-    async def copy_data(self, ref: ActorRef, data1, data2, sizes):
+    async def copy_data(self, ref: ActorRef, sizes):
         def generate_arrays(low, high):
             return [
                 np.random.randint(low, high, dtype="u1", size=size) for size in sizes
@@ -95,7 +94,6 @@ async def _start_pool(schemes):
     return pool
 
 
-@pytest.mark.asyncio
 @pytest.fixture
 async def actors(request: pytest.FixtureRequest):
     pool_counts, actor_counts, schemes, cpu = request.param
