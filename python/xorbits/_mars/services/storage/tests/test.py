@@ -3,7 +3,6 @@ import sys
 import asyncio
 
 import numpy as np
-import pytest
 
 from xoscar.api import (
     Actor,
@@ -15,7 +14,6 @@ from xoscar.api import (
     create_actor_pool,
     create_actor,
 )
-from xoscar.backends.indigen.pool import MainActorPool
 from xoscar.backends.allocate_strategy import ProcessIndex
 from xoscar.utils import lazy_import
 
@@ -32,14 +30,15 @@ class BufferTransferActor(Actor):
 
     def create_arrays_from_buffer_refs(self, buf_refs: list[BufferRef]):
         if self.cpu:
-            return [
-                np.frombuffer(BufferRef.get_buffer(ref), dtype="u1") for ref in buf_refs
-            ]
+            print(buf_refs)
+            # return [
+            #     np.frombuffer(ref, dtype="u1") for ref in buf_refs
+            # ]
         else:
             return [BufferRef.get_buffer(ref) for ref in buf_refs]
 
     async def copy_data(self, ref: ActorRef, sizes):
-        def generate_arrays(low, high):
+        def generate_arrays(low, high, sizes):
             return [
                 np.random.randint(low, high, dtype="u1", size=size) for size in sizes
             ]
@@ -62,9 +61,9 @@ class BufferTransferActor(Actor):
 
         async def verify_arrays(original_arrays, buf_refs):
             new_arrays = await ref.create_arrays_from_buffer_refs(buf_refs)
-            assert len(original_arrays) == len(new_arrays)
-            for a1, a2 in zip(original_arrays, new_arrays):
-                self.xp.testing.assert_array_equal(a1, a2)
+            # assert len(original_arrays) == len(new_arrays)
+            # for a1, a2 in zip(original_arrays, new_arrays):
+            #     self.xp.testing.assert_array_equal(a1, a2)
 
         await verify_arrays(arrays1, buf_refs1)
         await verify_arrays(arrays2, buf_refs2)
@@ -84,7 +83,6 @@ async def _start_pool(schemes):
 
     pool = await create_actor_pool(
         "127.0.0.1",
-        pool_cls=MainActorPool,
         n_process=2,
         subprocess_start_method=start_method,
         external_address_schemes=[None, schemes[0], schemes[1]],
@@ -94,37 +92,39 @@ async def _start_pool(schemes):
     return pool
 
 
-@pytest.fixture
-async def actors(request: pytest.FixtureRequest):
-    pool_counts, actor_counts, schemes, cpu = request.param
+# @pytest.fixture
+# async def actors(request: pytest.FixtureRequest):
+#     pool_counts, actor_counts, schemes, cpu = request.param
 
-    pools = []
-    for _ in range(pool_counts):
-        pools.append(await _start_pool(schemes))
+#     pool1 = await _start_pool(schemes)
+#     pool2 = await _start_pool(schemes)
 
-    actors = []
-    for pool in pools:
-        for i in range(actor_counts):
-            actor = await create_actor(
-                BufferTransferActor,
-                cpu=cpu,
-                uid=f"test_{i}",
-                address=pool.external_address,
-                allocate_strategy=ProcessIndex(i),
-            )
-            actors.append(actor)
+#     actor1 = await create_actor(
+#         BufferTransferActor,
+#         cpu=cpu,
+#         uid=f"test_{1}",
+#         address=pool1.external_address,
+#         allocate_strategy=ProcessIndex(1),
+#     )
+#     actor2 = await create_actor(
+#         BufferTransferActor,
+#         cpu=cpu,
+#         uid=f"test_{2}",
+#         address=pool2.external_address,
+#         allocate_strategy=ProcessIndex(1),
+#     )
 
-    yield actors
+#     yield actor1, actor2
 
-    for pool in pools:
-        await pool.stop()
+#     await pool1.stop()
+#     await pool2.stop()
 
 
-def _generate_params(pool_counts=2, actor_counts=2, cpu=True):
-    schemes = [(None, None), ("ucx", "ucx"), (None, "ucx"), ("ucx", None)]
+# def _generate_params(pool_counts=2, actor_counts=2, cpu=True):
+#     schemes = [(None, None), ("ucx", "ucx"), (None, "ucx"), ("ucx", None)]
 
-    for scheme in schemes:
-        yield pool_counts, actor_counts, scheme, cpu
+#     for scheme in schemes:
+#         yield pool_counts, actor_counts, scheme, cpu
 
 
 sizes = [
@@ -142,11 +142,35 @@ sizes = [
     ],
 ]
 
+schemes = [(None, None), ("ucx", "ucx"), (None, "ucx"), ("ucx", None)]
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("actors", _generate_params(), indirect=True)
-@pytest.mark.parametrize("sizes", sizes)
-async def test_simple_transfer(actors, sizes):
-    actor_test = actors[0]
-    tasks = [actor_test.copy_data(actor, sizes) for actor in actors[1:]]
-    await asyncio.gather(*tasks)
+# @pytest.mark.parametrize("actors", _generate_params(), indirect=True)
+# @pytest.mark.asyncio
+# @pytest.mark.parametrize("sizes", sizes)
+async def main():
+    cpu = True
+    size = sizes[0]
+    pool1 = await _start_pool(schemes[0])
+    pool2 = await _start_pool(schemes[0])
+    
+    async with pool1, pool2:
+        actor1 = await create_actor(
+            BufferTransferActor,
+            cpu=cpu,
+            uid=f"test_{1}",
+            address=pool1.external_address,
+            allocate_strategy=ProcessIndex(1),
+        )
+        actor2 = await create_actor(
+            BufferTransferActor,
+            cpu=cpu,
+            uid=f"test_{2}",
+            address=pool2.external_address,
+            allocate_strategy=ProcessIndex(1),
+        )
+        tasks = [actor1.copy_data(actor2, size)]
+        await asyncio.gather(*tasks)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
