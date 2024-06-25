@@ -3,6 +3,9 @@ import sys
 import asyncio
 
 import numpy as np
+import pandas as pd
+import pyarrow as pa
+from pyarrow.feather import write_feather, read_feather
 
 from xoscar.api import (
     Actor,
@@ -44,7 +47,7 @@ class BufferTransferActor(Actor):
         else:
             return [BufferRef.get_buffer(ref) for ref in buf_refs]
 
-    async def copy_data(self, ref: ActorRef, sizes):
+    async def copy_array(self, ref: ActorRef, sizes):
         def generate_arrays(low, high, sizes):
             return [
                 np.random.randint(low, high, dtype="u1", size=size) for size in sizes
@@ -74,6 +77,40 @@ class BufferTransferActor(Actor):
 
         await verify_arrays(arrays1, buf_refs1)
         await verify_arrays(arrays2, buf_refs2)
+
+    async def copy_dataframe(self, ref: ActorRef, sizes: list[int]):
+        def generate_dataframes(low, high, sizes):
+            return [
+                pd.DataFrame(np.random.randint(low, high, size=(rows, cols)))
+                for rows, cols in sizes
+            ]
+
+        dfs = generate_dataframes(3, 12, sizes)
+
+        buffers = [self._serialize_dataframe(df) for df in dfs]
+        buf_sizes = [len(buffer) for buffer in buffers]
+
+        ref: BufferTransferActor = await actor_ref(ref)
+        buf_refs = await ref.create_buffer_refs(buf_sizes)
+
+        await copy_to(buffers, buf_refs)
+
+        received_dfs = [
+            self._deserialize_dataframe(BufferRef.get_buffer(buf_ref))
+            for buf_ref in buf_refs
+        ]
+
+        for df, received_df in zip(dfs, received_dfs):
+            pd.testing.assert_frame_equal(df, received_df)
+            print("DataFrame transmission successful")
+
+    def _serialize_dataframe(self, df: pd.DataFrame) -> bytes:
+        output_stream = pa.BufferOutputStream()
+        write_feather(df, output_stream)
+        return output_stream.getvalue().to_pybytes()
+
+    def _deserialize_dataframe(self, buffer: bytes) -> pd.DataFrame:
+        return read_feather(pa.BufferReader(buffer))
 
 
 async def _start_pool(schemes):
@@ -108,10 +145,43 @@ sizes = [
     ],
 ]
 
+df_sizes = [
+    [
+        (10 * 1024, 3 * 1024),
+        (5 * 1024, 7 * 1024),
+        (8 * 1024, 7 * 1024),
+    ]
+]
+
 schemes = [(None, None), ("ucx", "ucx"), (None, "ucx"), ("ucx", None)]
 
 
-async def main():
+async def test_dataframe():
+    cpu = True
+    size = df_sizes[0]
+    pool1 = await _start_pool(schemes[0])
+    pool2 = await _start_pool(schemes[0])
+
+    async with pool1, pool2:
+        actor1: BufferTransferActor = await create_actor(
+            BufferTransferActor,
+            cpu=cpu,
+            uid=f"test_{1}",
+            address=pool1.external_address,
+            allocate_strategy=ProcessIndex(1),
+        )
+        actor2 = await create_actor(
+            BufferTransferActor,
+            cpu=cpu,
+            uid=f"test_{2}",
+            address=pool2.external_address,
+            allocate_strategy=ProcessIndex(1),
+        )
+        tasks = [actor1.copy_dataframe(actor2, size)]
+        await asyncio.gather(*tasks)
+
+
+async def test_array():
     cpu = True
     size = sizes[0]
     pool1 = await _start_pool(schemes[0])
@@ -132,9 +202,9 @@ async def main():
             address=pool2.external_address,
             allocate_strategy=ProcessIndex(1),
         )
-        tasks = [actor1.copy_data(actor2, size)]
+        tasks = [actor1.copy_array(actor2, size)]
         await asyncio.gather(*tasks)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(test_dataframe())
