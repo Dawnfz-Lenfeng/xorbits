@@ -75,11 +75,6 @@ class BufferTransferActor(Actor):
         await verify_arrays(arrays1, buf_refs1)
         await verify_arrays(arrays2, buf_refs2)
 
-    def _create_buffer_ref(self, size):
-        buffer = self.xp.zeros(size, dtype="u1").data
-        ref = buffer_ref(self.address, buffer)
-        return ref
-
 
 async def _start_pool(schemes):
     start_method = (
@@ -95,7 +90,6 @@ async def _start_pool(schemes):
         external_address_schemes=[None, schemes[0], schemes[1]],
     )
 
-    await pool.start()
     return pool
 
 
