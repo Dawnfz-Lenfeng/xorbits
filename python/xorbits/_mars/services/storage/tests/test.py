@@ -24,16 +24,23 @@ class BufferTransferActor(Actor):
     def __init__(self, cpu: bool = True):
         self.cpu = cpu
         self.xp = np if cpu else cupy
+        self._buffers = []
 
     def create_buffer_refs(self, sizes: list[int]) -> list[BufferRef]:
-        return [self._create_buffer_ref(size) for size in sizes]
+        if self.cpu:
+            buffers = [np.zeros(size, dtype="u1").data for size in sizes]
+        else:
+            assert cupy is not None
+            buffers = [cupy.zeros(size, dtype="u1") for size in sizes]
+        self._buffers.extend(buffers)
+        res = [buffer_ref(self.address, buf) for buf in buffers]
+        return res
 
     def create_arrays_from_buffer_refs(self, buf_refs: list[BufferRef]):
         if self.cpu:
-            print(buf_refs)
-            # return [
-            #     np.frombuffer(ref, dtype="u1") for ref in buf_refs
-            # ]
+            return [
+                np.frombuffer(BufferRef.get_buffer(ref), dtype="u1") for ref in buf_refs
+            ]
         else:
             return [BufferRef.get_buffer(ref) for ref in buf_refs]
 
@@ -61,9 +68,9 @@ class BufferTransferActor(Actor):
 
         async def verify_arrays(original_arrays, buf_refs):
             new_arrays = await ref.create_arrays_from_buffer_refs(buf_refs)
-            # assert len(original_arrays) == len(new_arrays)
-            # for a1, a2 in zip(original_arrays, new_arrays):
-            #     self.xp.testing.assert_array_equal(a1, a2)
+            assert len(original_arrays) == len(new_arrays)
+            for a1, a2 in zip(original_arrays, new_arrays):
+                self.xp.testing.assert_array_equal(a1, a2)
 
         await verify_arrays(arrays1, buf_refs1)
         await verify_arrays(arrays2, buf_refs2)
@@ -92,41 +99,6 @@ async def _start_pool(schemes):
     return pool
 
 
-# @pytest.fixture
-# async def actors(request: pytest.FixtureRequest):
-#     pool_counts, actor_counts, schemes, cpu = request.param
-
-#     pool1 = await _start_pool(schemes)
-#     pool2 = await _start_pool(schemes)
-
-#     actor1 = await create_actor(
-#         BufferTransferActor,
-#         cpu=cpu,
-#         uid=f"test_{1}",
-#         address=pool1.external_address,
-#         allocate_strategy=ProcessIndex(1),
-#     )
-#     actor2 = await create_actor(
-#         BufferTransferActor,
-#         cpu=cpu,
-#         uid=f"test_{2}",
-#         address=pool2.external_address,
-#         allocate_strategy=ProcessIndex(1),
-#     )
-
-#     yield actor1, actor2
-
-#     await pool1.stop()
-#     await pool2.stop()
-
-
-# def _generate_params(pool_counts=2, actor_counts=2, cpu=True):
-#     schemes = [(None, None), ("ucx", "ucx"), (None, "ucx"), ("ucx", None)]
-
-#     for scheme in schemes:
-#         yield pool_counts, actor_counts, scheme, cpu
-
-
 sizes = [
     [
         10 * 1024**2,
@@ -144,15 +116,13 @@ sizes = [
 
 schemes = [(None, None), ("ucx", "ucx"), (None, "ucx"), ("ucx", None)]
 
-# @pytest.mark.parametrize("actors", _generate_params(), indirect=True)
-# @pytest.mark.asyncio
-# @pytest.mark.parametrize("sizes", sizes)
+
 async def main():
     cpu = True
     size = sizes[0]
     pool1 = await _start_pool(schemes[0])
     pool2 = await _start_pool(schemes[0])
-    
+
     async with pool1, pool2:
         actor1 = await create_actor(
             BufferTransferActor,
