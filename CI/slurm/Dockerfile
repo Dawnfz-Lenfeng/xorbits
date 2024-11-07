@@ -1,9 +1,9 @@
 FROM giovtorres/slurm-docker-cluster:latest
 
-RUN sed -i 's|mirrorlist=http://mirrorlist.centos.org/?release=7&arch=x86_64&repo=os&infra=container|#mirrorlist=http://mirrorlist.centos.org/?release=7&arch=x86_64&repo=os&infra=container|g' /etc/yum.repos.d/CentOS-Base.repo && \
-    sed -i 's|#baseurl=http://mirror.centos.org/centos/7/os/x86_64|baseurl=http://vault.centos.org/centos/7/os/x86_64|g' /etc/yum.repos.d/CentOS-Base.repo && \
-    sed -i 's|mirrorlist=https://mirrorlist.centos.org/?release=7&arch=x86_64&repo=updates|#mirrorlist=https://mirrorlist.centos.org/?release=7&arch=x86_64&repo=updates|g' /etc/yum.repos.d/CentOS-Base.repo && \
-    sed -i 's|#baseurl=http://mirror.centos.org/centos/7/updates/x86_64|baseurl=http://vault.centos.org/centos/7/updates/x86_64|g' /etc/yum.repos.d/CentOS-Base.repo && \
+# mirrorlist.centos.org doesn't exists anymore
+RUN sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/CentOS-*.repo && \
+    sed -i s/^#.*baseurl=http/baseurl=http/g /etc/yum.repos.d/CentOS-*.repo && \
+    sed -i s/^mirrorlist=http/#mirrorlist=http/g /etc/yum.repos.d/CentOS-*.repo && \
     yum makecache && \
     yum -y update && \
     yum -y install iproute && \
