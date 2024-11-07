@@ -1,10 +1,9 @@
-name: dask-jobqueue
+name: xorbits-jobqueue
 channels:
   - conda-forge
   - nodefaults
 dependencies:
   - python=3.11
-  - dask
   - distributed
   - flake8
   - black
