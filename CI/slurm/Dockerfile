@@ -1,11 +1,11 @@
 FROM giovtorres/slurm-docker-cluster:latest
 
 RUN set -ex && \
-    yum makecache && \
-    yum -y update && \
-    yum -y install iproute2 && \
-    yum clean all && \
-    rm -rf /var/cache/yum && \
+    dnf makecache && \
+    dnf -y update && \
+    dnf -y install iproute2 && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf && \
     curl -o miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
     bash miniconda.sh -f -b -p /opt/conda && \
     /opt/conda/bin/conda clean -tipy && \
